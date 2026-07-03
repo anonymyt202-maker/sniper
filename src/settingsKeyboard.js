@@ -7,8 +7,8 @@ function buildSettingsKeyboard(managerChatId) {
   return {
     inline_keyboard: [
       [
-        { text: "📝 Tahrirlanish | 🔕", callback_data: 'noop' },
-        { text: "🗑 O'chirishlar | 🔕", callback_data: 'noop' },
+        { text: `📝 Tahrirlanish | ${on(s.notify_edit)}`, callback_data: 'toggle:notify_edit' },
+        { text: `🗑 O'chirishlar | ${on(s.notify_delete)}`, callback_data: 'toggle:notify_delete' },
       ],
       [
         { text: `↩️ Reply qilish | ${on(s.reply_mode)}`, callback_data: 'toggle:reply_mode' },

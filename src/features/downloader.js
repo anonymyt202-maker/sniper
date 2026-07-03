@@ -33,8 +33,10 @@ async function downloadMedia(url) {
     url,
     '-o', outputTemplate,
     '--no-playlist',
-    '--max-filesize', '50M',   // Telegram bot API limiti
+    '--max-filesize', '50M',
     '-f', 'best[ext=mp4]/best',
+    '--js-runtimes', 'node',
+    '--extractor-args', 'youtube:player_client=android,web',
   ]);
 
   const files = fs.readdirSync(DOWNLOAD_DIR).filter((f) => f.startsWith(id));
@@ -42,9 +44,6 @@ async function downloadMedia(url) {
   return path.join(DOWNLOAD_DIR, files[0]);
 }
 
-/**
- * Qo'shiq nomi bo'yicha YouTube'dan qidirib, audio (mp3) yuklab oladi.
- */
 async function downloadMusic(query) {
   const id = crypto.randomBytes(6).toString('hex');
   const outputTemplate = path.join(DOWNLOAD_DIR, `${id}.%(ext)s`);
@@ -55,6 +54,8 @@ async function downloadMusic(query) {
     '-x', '--audio-format', 'mp3',
     '--audio-quality', '0',
     '--max-filesize', '50M',
+    '--js-runtimes', 'node',
+    '--extractor-args', 'youtube:player_client=android,web',
   ]);
 
   const files = fs.readdirSync(DOWNLOAD_DIR).filter((f) => f.startsWith(id));

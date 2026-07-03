@@ -8,9 +8,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# yt-dlp'ni eng so'nggi versiyasini o'rnatish
+# yt-dlp'ni eng so'nggi versiyasini o'rnatish (Node.js JS runtime sifatida ishlatiladi)
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
-    && chmod a+rx /usr/local/bin/yt-dlp
+    && chmod a+rx /usr/local/bin/yt-dlp \
+    && yt-dlp --version
 
 WORKDIR /app
 

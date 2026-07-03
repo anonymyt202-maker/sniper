@@ -1,6 +1,6 @@
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const { NewMessage } = require('telegram/events');
+const { NewMessage, EditedMessage, DeletedMessage } = require('telegram/events');
 const { Api } = require('telegram');
 const Groq = require('groq-sdk');
 const fs = require('fs');
@@ -11,6 +11,7 @@ const profileClock = require('./features/profileClock');
 const rates = require('./features/rates');
 const downloader = require('./features/downloader');
 const emojiText = require('./features/emojiText');
+const tracker = require('./features/messageTracker');
 
 const API_ID = parseInt(process.env.API_ID, 10);
 const API_HASH = process.env.API_HASH;
@@ -141,6 +142,32 @@ async function startUserbotForUser(managerChatId, sessionString) {
   client.addEventHandler(async (event) => {
     await handleIncomingMessage(client, managerChatId, event);
   }, new NewMessage({ incoming: true })); // "Hammaga auto javob berish" sozlamasi uchun
+
+  // Barcha xabarlarni (kiruvchi ham, chiquvchi ham) tracker'ga yozib boramiz -
+  // edit/delete bo'lganda "oldingi holat"ni bilish uchun kerak
+  client.addEventHandler(async (event) => {
+    const msg = event.message;
+    if (!msg || msg.action) return; // xizmat xabarlarini o'tkazib yuboramiz
+    try {
+      const sender = await msg.getSender().catch(() => null);
+      tracker.track(
+        managerChatId,
+        msg.chatId?.toString() || msg.peerId?.toString(),
+        msg.id,
+        msg.message,
+        sender?.id?.toString(),
+        sender?.premium
+      );
+    } catch (e) {}
+  }, new NewMessage({}));
+
+  client.addEventHandler(async (event) => {
+    await handleEditedMessage(client, managerChatId, event);
+  }, new EditedMessage({}));
+
+  client.addEventHandler(async (event) => {
+    await handleDeletedMessage(client, managerChatId, event);
+  }, new DeletedMessage({}));
 
   console.log(`✅ Userbot ishga tushdi: manager_chat_id=${managerChatId}`);
   return client;
@@ -477,6 +504,69 @@ async function handleUserbotMessage(client, managerChatId, event) {
     try {
       await msg.edit({ text: `❌ Xatolik yuz berdi: ${err.message}` });
     } catch (e) {}
+  }
+}
+
+async function handleEditedMessage(client, managerChatId, event) {
+  const msg = event.message;
+  if (!msg || msg.out) return; // faqat boshqalar (mijozlar) tahrirlagan xabarlarga reaksiya beramiz
+
+  const settings = db.getSettings(managerChatId);
+  if (!settings.notify_edit) return;
+
+  try {
+    const chatId = msg.chatId?.toString() || msg.peerId?.toString();
+    const prev = tracker.get(managerChatId, chatId, msg.id);
+    const newText = msg.message || '';
+
+    // Agar oldingi holatni bilmasak yoki matn o'zgarmagan bo'lsa - hech narsa qilmaymiz
+    if (!prev || prev.text === newText) {
+      tracker.track(managerChatId, chatId, msg.id, newText, prev?.senderId, prev?.isPremium);
+      return;
+    }
+
+    const sender = await msg.getSender().catch(() => null);
+    const isPremium = sender?.premium || prev?.isPremium;
+
+    let notice = `✏️ Nega siz xabaringizni edit qildiz?\n\n`;
+    notice += `**Oldingi xabar:**\n${prev.text || '(bo\'sh)'}\n\n`;
+    notice += `**Hozirgi xabar:**\n${newText || '(bo\'sh)'}`;
+    if (!isPremium) {
+      notice += `\n\n@aisuxbat_bot orqali yuborildi😆`;
+    }
+
+    await client.sendMessage(msg.peerId, { message: notice, replyTo: msg.id });
+    tracker.track(managerChatId, chatId, msg.id, newText, sender?.id?.toString(), isPremium);
+  } catch (err) {
+    console.error(`[notifyEdit:${managerChatId}]`, err.message);
+  }
+}
+
+async function handleDeletedMessage(client, managerChatId, event) {
+  const settings = db.getSettings(managerChatId);
+  if (!settings.notify_delete) return;
+
+  try {
+    const chatId = event.chatId?.toString();
+    for (const msgId of event.deletedIds) {
+      const prev = tracker.get(managerChatId, chatId, msgId);
+      if (!prev || !prev.text) continue; // bizda ma'lumot bo'lmasa bildirishnoma yubora olmaymiz
+
+      let notice = `🗑 Nega siz bu xabarni o'chirdingiz?\n\n`;
+      notice += `**O'chirilgan xabar:**\n${prev.text}`;
+      if (!prev.isPremium) {
+        notice += `\n\n@aisuxbat_bot orqali yuborildi😆`;
+      }
+
+      try {
+        await client.sendMessage(chatId, { message: notice });
+      } catch (e) {
+        // chat topilmasa yoki yozib bo'lmasa (masalan kanal) o'tkazib yuboramiz
+      }
+      tracker.remove(managerChatId, chatId, msgId);
+    }
+  } catch (err) {
+    console.error(`[notifyDelete:${managerChatId}]`, err.message);
   }
 }
 

@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS settings (
   auto_reply_all INTEGER DEFAULT 0,
   auto_emoji_running INTEGER DEFAULT 0,    -- .emoji on/off - har bir chiquvchi xabarni avto-bezash
   auto_emoji_style TEXT DEFAULT 'random',  -- 'random' | '1'..'6'
+  notify_edit INTEGER DEFAULT 0,           -- kimdir xabarini edit qilsa xabar berish
+  notify_delete INTEGER DEFAULT 0,         -- kimdir xabarini o'chirsa xabar berish
   FOREIGN KEY (manager_chat_id) REFERENCES users(manager_chat_id)
 );
 
@@ -56,6 +58,12 @@ if (!existingCols.includes('auto_emoji_running')) {
 }
 if (!existingCols.includes('auto_emoji_style')) {
   db.exec("ALTER TABLE settings ADD COLUMN auto_emoji_style TEXT DEFAULT 'random'");
+}
+if (!existingCols.includes('notify_edit')) {
+  db.exec("ALTER TABLE settings ADD COLUMN notify_edit INTEGER DEFAULT 0");
+}
+if (!existingCols.includes('notify_delete')) {
+  db.exec("ALTER TABLE settings ADD COLUMN notify_delete INTEGER DEFAULT 0");
 }
 
 function ensureUser(managerChatId) {
@@ -100,7 +108,7 @@ function updateSetting(managerChatId, field, value) {
   const allowed = [
     'auto_status', 'auto_status_running', 'profile_clock', 'online_247',
     'reply_mode', 'typing_mode', 'read_on_reply', 'ai_provider', 'auto_reply_all',
-    'auto_emoji_running', 'auto_emoji_style',
+    'auto_emoji_running', 'auto_emoji_style', 'notify_edit', 'notify_delete',
   ];
   if (!allowed.includes(field)) throw new Error(`Noto'g'ri sozlama: ${field}`);
   db.prepare(`UPDATE settings SET ${field} = ? WHERE manager_chat_id = ?`).run(value, managerChatId);
