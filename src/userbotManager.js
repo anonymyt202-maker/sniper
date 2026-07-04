@@ -12,6 +12,7 @@ const rates = require('./features/rates');
 const downloader = require('./features/downloader');
 const emojiText = require('./features/emojiText');
 const tracker = require('./features/messageTracker');
+const checkers = require('./features/checkers');
 
 const API_ID = parseInt(process.env.API_ID, 10);
 const API_HASH = process.env.API_HASH;
@@ -103,6 +104,11 @@ const HELP_TEXT = `🤖 **Buyruqlar ro'yxati** 🤖
 .emoji on – ✨ Avto-emoji rejimini yoqish (barcha keyingi xabarlaringiz avtomatik bezaladi)
 .emoji on 1..6 – ✨ Avto-emoji rejimini aniq stil bilan yoqish
 .emoji off – ✨ Avto-emoji rejimini o'chirish
+.help_edit <matn> – 📖 .help matnini tahrirlash (premium emoji uchun reply qiling)
+.settings_edit <matn> – ⚙️ /settings matnini tahrirlash
+.post matn | tugma | url – 📨 Tugmali xabar yuborish
+.shashka – ♟ Shashka o'yini boshlash
+.shashka_move id a3 b4 – ♟ Shashka yurish
 .dice – 🎲 Random dice
 .dice1..dice6 – 🎲 Aniq dice`;
 
@@ -221,7 +227,29 @@ async function handleUserbotMessage(client, managerChatId, event) {
   try {
     switch (true) {
       case cmd === 'help': {
-        await msg.edit({ text: HELP_TEXT });
+        const custom = db.getConfig('help_text');
+        await msg.edit({ text: custom && custom.trim() ? custom : HELP_TEXT });
+        break;
+      }
+
+      case cmd === 'help_edit': {
+        if (!argText) {
+          await msg.edit({ text: "❗ Yangi matn kiriting: `.help_edit <matn>`\n\nAsl holatga qaytarish uchun: `.help_edit reset`\n\n(Premium emoji qo'yish uchun shu matnni Telegram'da premium emoji bilan yozib, so'ng shu buyruqqa reply qilib `.help_edit` yozing.)" });
+          break;
+        }
+        if (argText.toLowerCase() === 'reset') {
+          db.setConfig('help_text', '');
+          await msg.edit({ text: '✅ .help matni standart holatga qaytarildi.' });
+          break;
+        }
+        // Reply qilingan xabar bo'lsa, o'sha xabar matnini (formatlash/premium emoji bilan) olamiz
+        let newText = argText;
+        if (msg.isReply) {
+          const replied = await msg.getReplyMessage();
+          if (replied?.message) newText = replied.message;
+        }
+        db.setConfig('help_text', newText);
+        await msg.edit({ text: "✅ .help matni yangilandi. Ko'rish uchun `.help` yozing." });
         break;
       }
 
@@ -317,9 +345,19 @@ async function handleUserbotMessage(client, managerChatId, event) {
           await msg.edit({ text: '❗ Savol kiriting: `.ai Salom, qandaysan?`' });
           break;
         }
+        const check = db.canUseFeature(managerChatId, 'ai');
+        if (!check.allowed) {
+          await msg.edit({ text: `❌ Kunlik AI so'rov limitingiz tugadi (${check.limit} ta/kun). ⭐ Premium: manager botda /premium.` });
+          break;
+        }
         await msg.edit({ text: '🤖 O\'ylanmoqda...' });
         const answer = await askGroq(argText, 'chatgpt');
-        await msg.edit({ text: `🤖 ${answer}` });
+        db.incrementUsage(managerChatId, 'ai');
+        const isPremium = db.isPremiumActive(managerChatId);
+        const ads = db.getConfig('ads_enabled_for_free') === '1' && !isPremium;
+        const botUsername = db.getConfig('bot_username') || 'aisuxbat_bot';
+        const suffix = ads ? `\n\n🤖 @${botUsername} orqali` : '';
+        await msg.edit({ text: `🤖 ${answer}${suffix}` });
         break;
       }
 
@@ -328,16 +366,35 @@ async function handleUserbotMessage(client, managerChatId, event) {
           await msg.edit({ text: '❗ Savol kiriting: `.grok Salom, qandaysan?`' });
           break;
         }
+        const check = db.canUseFeature(managerChatId, 'ai');
+        if (!check.allowed) {
+          await msg.edit({ text: `❌ Kunlik AI so'rov limitingiz tugadi (${check.limit} ta/kun). ⭐ Premium: manager botda /premium.` });
+          break;
+        }
         await msg.edit({ text: '🪐 O\'ylanmoqda...' });
         const answer = await askGroq(argText, 'grok');
-        await msg.edit({ text: `🪐 ${answer}` });
+        db.incrementUsage(managerChatId, 'ai');
+        const isPremium2 = db.isPremiumActive(managerChatId);
+        const ads2 = db.getConfig('ads_enabled_for_free') === '1' && !isPremium2;
+        const botUsername2 = db.getConfig('bot_username') || 'aisuxbat_bot';
+        const suffix2 = ads2 ? `\n\n🪐 @${botUsername2} orqali` : '';
+        await msg.edit({ text: `🪐 ${answer}${suffix2}` });
         break;
       }
 
       case cmd === 'img' || cmd === 'rasm': {
+        const check = db.canUseFeature(managerChatId, 'img');
+        if (!check.allowed) {
+          await msg.edit({
+            text: `❌ Kunlik rasm generatsiya limitingiz tugadi (${check.limit} ta/kun).\n\n⭐ Premium sotib olib limitni oshiring: manager botda /premium yozing.`,
+          });
+          break;
+        }
         await msg.edit({
           text: "🎇 Rasm generatsiya hozircha ulanmagan. Bu funksiyani keyinroq faollashtirish mumkin.",
         });
+        // Limitni funksiya haqiqatda ishlaganda hisoblash uchun, hozircha stub bo'lgani sabab count qilmaymiz.
+        // Real API ulanganda shu qatorni oching: db.incrementUsage(managerChatId, 'img');
         break;
       }
 
@@ -463,6 +520,79 @@ async function handleUserbotMessage(client, managerChatId, event) {
         }
         const styleNum = parseInt(cmd.replace('emoji', ''), 10);
         await msg.edit({ text: emojiText.applyStyle(styleNum, argText) });
+        break;
+      }
+
+      case cmd === 'settings_edit': {
+        if (!argText && !msg.isReply) {
+          await msg.edit({ text: "❗ Yangi matn kiriting: `.settings_edit <matn>` yoki premium emojili xabarga reply qilib `.settings_edit` yozing.\n\nAsl holatga qaytarish: `.settings_edit reset`" });
+          break;
+        }
+        if (argText.toLowerCase() === 'reset') {
+          db.setConfig('settings_text', '');
+          await msg.edit({ text: "✅ /settings matni standart holatga qaytarildi." });
+          break;
+        }
+        let newText = argText;
+        if (msg.isReply) {
+          const replied = await msg.getReplyMessage();
+          if (replied?.message) newText = replied.message;
+        }
+        db.setConfig('settings_text', newText);
+        await msg.edit({ text: "✅ /settings matni yangilandi. Manager botda /settings yozib ko'ring." });
+        break;
+      }
+      case cmd === 'shashka': {
+        await msg.edit({ text: "🎲 Shashka o'yini boshlanmoqda..." });
+        const gameId = await checkers.sendChallenge(client, msg);
+        await msg.delete({ revoke: true }).catch(() => {});
+        break;
+      }
+
+      case cmd === 'shashka_move': {
+        const [gameId, from, to] = rest;
+        if (!gameId || !from || !to) {
+          await msg.edit({ text: '❗ Format: `.shashka_move <gameId> a3 b4`' });
+          break;
+        }
+        const result = checkers.move(gameId, from, to);
+        if (!result.ok) {
+          await msg.edit({ text: `❌ ${result.error}` });
+          break;
+        }
+        await msg.edit({
+          text: `♟ Yurish bajarildi: ${from} → ${to}\n\n${checkers.renderBoard(result.board)}\n\nNavbat: ${result.turn === 1 ? '⚪️' : '⚫️'}`,
+        });
+        break;
+      }
+
+      case cmd === 'post': {
+        // Format: .post matn | tugma nomi | url
+        if (!argText || !argText.includes('|')) {
+          await msg.edit({ text: '❗ Format: `.post Xabar matni | Tugma nomi | https://example.com`' });
+          break;
+        }
+        const parts = argText.split('|').map((p) => p.trim());
+        const [postText, btnLabel, btnUrl] = parts;
+        if (!postText) {
+          await msg.edit({ text: "❗ Xabar matni bo'sh bo'lmasligi kerak." });
+          break;
+        }
+
+        const { Button } = require('telegram');
+        const sendOptions = { message: postText };
+        if (btnLabel && btnUrl) {
+          try {
+            new URL(btnUrl);
+            sendOptions.buttons = Button.url(btnLabel, btnUrl);
+          } catch (e) {
+            await msg.edit({ text: "❌ URL formati noto'g'ri." });
+            break;
+          }
+        }
+
+        await client.sendMessage(msg.peerId, sendOptions);
+        await msg.delete({ revoke: true }).catch(() => {});
         break;
       }
 
