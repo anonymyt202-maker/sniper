@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const DB_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
@@ -88,6 +89,16 @@ CREATE TABLE IF NOT EXISTS usage_daily (
 CREATE TABLE IF NOT EXISTS bot_config (
   key TEXT PRIMARY KEY,
   value TEXT
+);
+
+-- .post orqali yaratilgan xabarlar - secret token bilan istalgan chatda chaqiriladi
+CREATE TABLE IF NOT EXISTS posts (
+  token TEXT PRIMARY KEY,
+  owner_chat_id INTEGER,
+  text TEXT NOT NULL,
+  button_label TEXT,
+  button_url TEXT,
+  created_at INTEGER DEFAULT (strftime('%s','now'))
 );
 `);
 
@@ -340,6 +351,19 @@ function canUseFeature(managerChatId, feature) {
   return { allowed: used < limit, remaining: Math.max(0, limit - used), limit };
 }
 
+// ---------- Postlar (.post token tizimi) ----------
+function createPost(ownerChatId, text, buttonLabel, buttonUrl) {
+  const token = crypto.randomBytes(4).toString('hex'); // 8 xonali qisqa token
+  db.prepare(
+    'INSERT INTO posts (token, owner_chat_id, text, button_label, button_url) VALUES (?, ?, ?, ?, ?)'
+  ).run(token, ownerChatId, text, buttonLabel || null, buttonUrl || null);
+  return token;
+}
+
+function getPostByToken(token) {
+  return db.prepare('SELECT * FROM posts WHERE token = ?').get(token);
+}
+
 module.exports = {
   db,
   ensureUser,
@@ -370,4 +394,6 @@ module.exports = {
   getTodayUsage,
   incrementUsage,
   canUseFeature,
+  createPost,
+  getPostByToken,
 };

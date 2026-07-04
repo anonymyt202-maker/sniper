@@ -12,7 +12,6 @@ const rates = require('./features/rates');
 const downloader = require('./features/downloader');
 const emojiText = require('./features/emojiText');
 const tracker = require('./features/messageTracker');
-const checkers = require('./features/checkers');
 
 const API_ID = parseInt(process.env.API_ID, 10);
 const API_HASH = process.env.API_HASH;
@@ -106,9 +105,8 @@ const HELP_TEXT = `🤖 **Buyruqlar ro'yxati** 🤖
 .emoji off – ✨ Avto-emoji rejimini o'chirish
 .help_edit <matn> – 📖 .help matnini tahrirlash (premium emoji uchun reply qiling)
 .settings_edit <matn> – ⚙️ /settings matnini tahrirlash
-.post matn | tugma | url – 📨 Tugmali xabar yuborish
-.shashka – ♟ Shashka o'yini boshlash
-.shashka_move id a3 b4 – ♟ Shashka yurish
+.post matn | tugma | url – 📨 Post yaratish (secret token bilan, @bot_username token orqali chaqiriladi)
+.shashka – ♟ Shashka haqida ma'lumot (o'yin @bot_username orqali guruhda yoki botga /shashka DM'da)
 .dice – 🎲 Random dice
 .dice1..dice6 – 🎲 Aniq dice`;
 
@@ -543,25 +541,9 @@ async function handleUserbotMessage(client, managerChatId, event) {
         break;
       }
       case cmd === 'shashka': {
-        await msg.edit({ text: "🎲 Shashka o'yini boshlanmoqda..." });
-        const gameId = await checkers.sendChallenge(client, msg);
-        await msg.delete({ revoke: true }).catch(() => {});
-        break;
-      }
-
-      case cmd === 'shashka_move': {
-        const [gameId, from, to] = rest;
-        if (!gameId || !from || !to) {
-          await msg.edit({ text: '❗ Format: `.shashka_move <gameId> a3 b4`' });
-          break;
-        }
-        const result = checkers.move(gameId, from, to);
-        if (!result.ok) {
-          await msg.edit({ text: `❌ ${result.error}` });
-          break;
-        }
+        const botUsername = db.getConfig('bot_username') || 'aisuxbat_bot';
         await msg.edit({
-          text: `♟ Yurish bajarildi: ${from} → ${to}\n\n${checkers.renderBoard(result.board)}\n\nNavbat: ${result.turn === 1 ? '⚪️' : '⚫️'}`,
+          text: `♟ Shashka o'yini endi bot orqali ishlaydi.\n\nGuruhda: \`@${botUsername} shashka\` deb yozing.\nShaxsiy (DM'da): botga \`/shashka\` yozing — AI bilan o'ynaysiz.`,
         });
         break;
       }
@@ -578,21 +560,20 @@ async function handleUserbotMessage(client, managerChatId, event) {
           await msg.edit({ text: "❗ Xabar matni bo'sh bo'lmasligi kerak." });
           break;
         }
-
-        const { Button } = require('telegram');
-        const sendOptions = { message: postText };
         if (btnLabel && btnUrl) {
           try {
             new URL(btnUrl);
-            sendOptions.buttons = Button.url(btnLabel, btnUrl);
           } catch (e) {
             await msg.edit({ text: "❌ URL formati noto'g'ri." });
             break;
           }
         }
 
-        await client.sendMessage(msg.peerId, sendOptions);
-        await msg.delete({ revoke: true }).catch(() => {});
+        const token = db.createPost(managerChatId, postText, btnLabel || null, btnUrl || null);
+        const botUsername = db.getConfig('bot_username') || 'aisuxbat_bot';
+        await msg.edit({
+          text: `✅ Post yaratildi!\n\n🔑 Token: \`${token}\`\n\nIstalgan chatda shu tokenni chaqiring:\n\`@${botUsername} ${token}\``,
+        });
         break;
       }
 

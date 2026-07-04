@@ -126,3 +126,28 @@ uzum-userbot/
 - `.img` / `.rasm` — Stability AI, Pollinations.ai yoki boshqa rasm generatsiya API ulash mumkin
 - `.ok` (o'chib ketuvchi media saqlash) — `NewMessage` eventida `ttlSeconds` bor xabarlarni avtomatik yuklab olish logikasi qo'shiladi
 - Auto-reply (barchaga yoki tanlangan chatlarga) — `NewMessage({incoming: true})` handler qo'shib, `settings.auto_reply_all` ga qarab Groq orqali javob yozish mumkin (asos allaqachon `userbotManager.js`da bor, faqat handler yo'q)
+
+## 10. Yangi funksiyalar: Shashka (inline o'yin) va Post (token tizimi)
+
+### Sozlash (majburiy!)
+
+Shashka **inline mode** orqali ishlaydi — buni @BotFather'da yoqish kerak:
+1. @BotFather → `/mybots` → botingizni tanlang → **Bot Settings** → **Inline Mode** → **Turn on**
+2. Placeholder matnini xohlagancha qo'yishingiz mumkin (masalan "shashka yoki token kiriting")
+
+Stars (XTR) to'lovlar uchun maxsus sozlash shart emas — `sendInvoice` bilan `provider_token: ''` va `currency: 'XTR'` avtomatik ishlaydi.
+
+### Shashka qanday ishlaydi
+
+- **Guruhda:** `@bot_username shashka` yozing → "Shashka o'yinini boshlash" natijasi chiqadi → tanlansa, "🎮 Bellashish" tugmasi bilan xabar chiqadi → ikkinchi kishi bosadi → 8x8 tugmali taxta ochiladi, navbat bilan bosib yurish qilinadi
+- **DM'da (botga shaxsiy):** `/shashka` yozing → bot bilan (oddiy AI) darhol o'ynay boshlaysiz
+- Yurish: avval o'z donangizni bosasiz (tanlanadi 🔸), keyin borar joyingizni bosasiz
+- Yeyish (jump) avtomatik aniqlanadi, agar mumkin bo'lsa
+- "🏳 Taslim bo'lish" tugmasi orqali istalgan vaqt tugatish mumkin
+
+### .post qanday ishlaydi
+
+1. Shaxsiy akkauntingizda: `.post Bizning aksiya boshlandi! | Ko'proq | https://example.com`
+2. Bot sizga 8 xonali **token** qaytaradi
+3. Endi istalgan chatda (guruh yoki shaxsiy): `@bot_username <token>` yozing → natija chiqadi → tanlansangiz, o'sha post matni (va tugma bo'lsa URL tugmasi bilan) o'sha chatga yuboriladi
+4. Token cheksiz marta, istalgan chatda qayta ishlatilishi mumkin

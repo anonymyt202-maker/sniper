@@ -6,6 +6,7 @@ const { buildSettingsKeyboard } = require('./settingsKeyboard');
 const { startUserbotForUser, stopUserbotForUser, getClient } = require('./userbotManager');
 const payments = require('./payments');
 const admin = require('./adminPanel');
+const checkersBot = require('./checkersBot');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -134,14 +135,29 @@ bot.onText(/^\/setbotusername (.+)$/, async (msg, match) => {
   await send(chatId, `✅ Bot username o'rnatildi: @${username}`);
 });
 
+bot.onText(/^\/shashka$/, async (msg) => {
+  const chatId = msg.chat.id;
+  if (msg.chat.type !== 'private') {
+    await send(chatId, "♟ Guruhda o'ynash uchun: `@" + (db.getConfig('bot_username') || 'bot_username') + " shashka` deb yozing.");
+    return;
+  }
+  await checkersBot.startAiGame(bot, chatId, msg.from.id, msg.from.first_name || msg.from.username || 'Player');
+});
+
 // Callback query handler - settings tugmalarini bosganda
 bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
+  const chatId = query.message?.chat?.id; // inline (shashka guruh) callbacklarida query.message bo'lmaydi
   const data = query.data;
 
   try {
     if (data === 'noop') {
       await bot.answerCallbackQuery(query.id);
+      return;
+    }
+
+    // ---------- Shashka o'yini callbacklari ----------
+    if (data.startsWith('sh:') || data.startsWith('sh_join:') || data.startsWith('sh_resign:') || data === 'sh_join_placeholder') {
+      await checkersBot.handleCallbackQuery(bot, query);
       return;
     }
 
@@ -435,6 +451,58 @@ bot.on('message', async (msg) => {
 
   // 5) .add_message kabi userbot komandalari manager botda emas, shaxsiy akkauntda ishlaydi.
   //    Manager botga oddiy xabar yozilsa, hech narsa qilmaymiz (yoki yordam ko'rsatamiz).
+});
+
+bot.on('inline_query', async (query) => {
+  const text = (query.query || '').trim();
+  const lower = text.toLowerCase();
+
+  if (lower === 'shashka' || lower === 'шашки' || lower === '') {
+    await checkersBot.handleInlineQuery(bot, query);
+    return;
+  }
+
+  // Token bo'lishi mumkin (.post orqali yaratilgan) - 8 xonali hex
+  if (/^[a-f0-9]{8}$/.test(text)) {
+    const post = db.getPostByToken(text);
+    if (!post) {
+      try {
+        await bot.answerInlineQuery(query.id, [], { cache_time: 0, switch_pm_text: 'Token topilmadi', switch_pm_parameter: 'notfound' });
+      } catch (e) {}
+      return;
+    }
+
+    const result = {
+      type: 'article',
+      id: `post_${text}`,
+      title: '📨 Post yuborish',
+      description: post.text.slice(0, 80),
+      input_message_content: { message_text: post.text },
+    };
+    if (post.button_label && post.button_url) {
+      result.reply_markup = {
+        inline_keyboard: [[{ text: post.button_label, url: post.button_url }]],
+      };
+    }
+
+    try {
+      await bot.answerInlineQuery(query.id, [result], { cache_time: 0 });
+    } catch (err) {
+      console.error('[inlineQuery:post]', err.message);
+    }
+    return;
+  }
+
+  // Boshqa matnlar uchun bo'sh natija
+  try {
+    await bot.answerInlineQuery(query.id, [], { cache_time: 0 });
+  } catch (e) {}
+});
+
+bot.on('chosen_inline_result', async (result) => {
+  if (result.result_id === 'new_checkers_game') {
+    await checkersBot.handleChosenInlineResult(bot, result);
+  }
 });
 
 bot.on('pre_checkout_query', async (query) => {
